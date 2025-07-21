@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - [Dashboard] %(mess
 
 def get_db_path():
     # Simplified for brevity
-    return 'scraped_data.db'
+    return 'scraper_data.db'
 
 @app.route('/')
 def index(): return render_template('index.html')

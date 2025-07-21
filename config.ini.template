@@ -1,6 +1,6 @@
 [main]
 start_url = http://quotes.toscrape.com/
-database_file = scraped_data.db
+database_file = scraper_data.db
 tasks = 5
 delay_min = 1.5
 delay_max = 4.0
