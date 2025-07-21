@@ -8,12 +8,11 @@ import random
 import re
 import time
 from collections import deque
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, parse_qs
 from urllib.robotparser import RobotFileParser
 
 import aiohttp
 import extruct
-import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from fake_useragent import UserAgent
@@ -27,13 +26,13 @@ from captcha_solver import CaptchaSolver
 from database import Database
 from osint_utils import (extract_contacts_and_socials, find_and_process_images,
                          check_interesting_files, get_dns_records, query_wayback_machine,
-                         query_shodan, find_and_analyze_js)
+                         query_shodan, find_and_analyze_js, find_cloud_buckets)
+from recon_tools import enumerate_subdomains, brute_force_directories
 from tech_fingerprinter import TechFingerprinter
 
 # --- Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 scraper_logger = logging.getLogger('scraper')
-
 load_dotenv()
 COMMAND_FILE = 'command.json'
 
@@ -51,11 +50,21 @@ class ScrapedItem(BaseModel):
     image_metadata: str | None = None
     interesting_files: str | None = None
     js_analysis: str | None = None
+    cloud_buckets: str | None = None
 
 class DomainOsintData(BaseModel):
     domain: str
     dns_records: str
     shodan_info: str
+
+class ReconResult(BaseModel):
+    type: str
+    finding: str
+    status_code: int
+
+class UrlParameter(BaseModel):
+    url: str
+    parameter: str
 
 class AdvancedWebScraper:
     def __init__(self, config):
@@ -95,16 +104,19 @@ class AdvancedWebScraper:
         self.proxy_index = 0
         self.custom_headers = self._load_custom_headers()
 
+        self._load_osint_settings()
+        self._load_recon_settings()
         self._load_crawling_rules()
         self._load_retry_settings()
-        self._load_osint_settings()
-
         self._initialize_state()
         self._setup_log_capture()
 
     def _load_osint_settings(self):
         self.osint_config = self.config['osint'] if 'osint' in self.config else {}
         self.shodan_api_key = self.osint_config.get('shodan_api_key', fallback=None)
+
+    def _load_recon_settings(self):
+        self.recon_config = self.config['recon'] if 'recon' in self.config else {}
 
     async def _run_domain_osint(self):
         """Performs OSINT tasks that apply to the entire domain."""
@@ -126,6 +138,31 @@ class AdvancedWebScraper:
         await asyncio.to_thread(self.db.insert_osint_data, osint_data)
         scraper_logger.info("--- Domain-Level OSINT Complete ---")
 
+    async def _run_reconnaissance_phase(self):
+        scraper_logger.info("--- Starting Active Reconnaissance Phase ---")
+        async with aiohttp.ClientSession(headers={'User-Agent': self.user_agent.random}) as session:
+            recon_tasks = []
+            if self.recon_config.getboolean('subdomain_enum', False):
+                wordlist = self.recon_config.get('subdomain_wordlist')
+                recon_tasks.append(enumerate_subdomains(self.domain, wordlist, session))
+            
+            if self.recon_config.getboolean('dir_bruteforce', False):
+                wordlist = self.recon_config.get('dir_wordlist')
+                recon_tasks.append(brute_force_directories(self.base_url, wordlist, session))
+            
+            results = await asyncio.gather(*recon_tasks)
+            
+            # Process results and add to queue/db
+            for res_list in results:
+                for finding, status in res_list:
+                    if 'http' in finding: # It's a full URL (subdomain or dir)
+                        recon_type = 'subdomain' if self.domain in urlparse(finding).netloc else 'directory'
+                        await asyncio.to_thread(self.db.insert_recon_result, ReconResult(type=recon_type, finding=finding, status_code=status))
+                        if finding not in self.visited_urls:
+                            self.visited_urls.add(finding)
+                            await self.url_queue.put(finding)
+        scraper_logger.info("--- Active Reconnaissance Phase Complete ---")
+
     async def _parse_page(self, url, html_content, status_code, headers, http_session):
         soup = BeautifulSoup(html_content, 'lxml')
         
@@ -138,32 +175,31 @@ class AdvancedWebScraper:
         text = soup.get_text(separator=' ', strip=True)
         title = soup.title.string.strip() if soup.title else "No Title"
         
-        # Language and Structured Data
-        language = detect(text) if self.config.getboolean('parser', 'detect_language', fallback=True) and text else None
-        structured_data = extruct.extract(html_content, base_url=url) if self.config.getboolean('parser', 'extract_structured_data', fallback=True) else {}
-        
-        # OSINT Analysis
-        technologies, emails, social_links, image_metadata, interesting_files, js_analysis = {}, {}, {}, {}, {}, {}
-        if self.osint_config.getboolean('fingerprint_tech', False):
-            technologies = self.fingerprinter.analyze(url, html_content, headers)
-        if self.osint_config.getboolean('extract_contacts', False):
-            contacts = await extract_contacts_and_socials(html_content, url)
-            emails, social_links = contacts['emails'], contacts['social_links']
-        if self.osint_config.getboolean('analyze_images', False):
-            image_metadata = await find_and_process_images(soup, url, http_session)
-        if self.osint_config.getboolean('find_hidden_files', False):
-            interesting_files = await check_interesting_files(http_session, url)
-        if self.osint_config.getboolean('analyze_js', False):
-            js_analysis = await find_and_analyze_js(soup, url, http_session)
+        # Parameter Analysis
+        parsed_url = urlparse(url)
+        params = parse_qs(parsed_url.query)
+        for param in params:
+            await asyncio.to_thread(self.db.insert_url_parameter, UrlParameter(url=url, parameter=param))
+
+        # OSINT & Recon Analysis
+        language = detect(text) if self.osint_config.getboolean('detect_language', True) and text else None
+        structured_data = extruct.extract(html_content, base_url=url) if self.osint_config.getboolean('extract_structured_data', True) else {}
+        technologies = self.fingerprinter.analyze(url, html_content, headers) if self.osint_config.getboolean('fingerprint_tech', True) else {}
+        contacts = await extract_contacts_and_socials(html_content, url) if self.osint_config.getboolean('extract_contacts', True) else {}
+        image_metadata = await find_and_process_images(soup, url, http_session) if self.osint_config.getboolean('analyze_images', True) else {}
+        interesting_files = await check_interesting_files(http_session, url) if self.osint_config.getboolean('find_hidden_files', True) else {}
+        js_analysis = await find_and_analyze_js(soup, url, http_session) if self.osint_config.getboolean('analyze_js', True) else {}
+        cloud_buckets = find_cloud_buckets(html_content) if self.recon_config.getboolean('find_cloud_buckets', True) else {}
 
         # Save to DB
         try:
             item = ScrapedItem(
                 url=url, title=title, text_content=text, status_code=status_code, language=language,
                 structured_data=json.dumps({k: v for k, v in structured_data.items() if v}),
-                technologies=json.dumps(technologies), emails=json.dumps(emails),
-                social_links=json.dumps(social_links), image_metadata=json.dumps(image_metadata),
-                interesting_files=json.dumps(interesting_files), js_analysis=json.dumps(js_analysis)
+                technologies=json.dumps(technologies), emails=json.dumps(contacts.get('emails', [])),
+                social_links=json.dumps(contacts.get('social_links', {})), image_metadata=json.dumps(image_metadata),
+                interesting_files=json.dumps(interesting_files), js_analysis=json.dumps(js_analysis),
+                cloud_buckets=json.dumps(cloud_buckets)
             )
             await asyncio.to_thread(self.db.insert_item, item)
         except ValidationError as e:
@@ -234,37 +270,33 @@ class AdvancedWebScraper:
         
         last_url = self.base_url
         async with aiohttp.ClientSession(headers={'User-Agent': self.user_agent.random}) as http_session:
-            try:
-                while not self.should_stop and not (self.status == "Finished" and self.url_queue.empty()):
-                    try:
-                        url = await asyncio.wait_for(self.url_queue.get(), timeout=1.0)
-                    except asyncio.TimeoutError:
-                        continue
-                    
-                    scraper_logger.info(f"Worker {asyncio.current_task().get_name()}: Crawling {url}")
-                    html, status, headers = await self._get_page_content(context, url, referer=last_url)
-                    
-                    async with self.lock:
-                        self.http_status_codes[status] = self.http_status_codes.get(status, 0) + 1
+            while not self.should_stop:
+                try: url = await asyncio.wait_for(self.url_queue.get(), timeout=1.0)
+                except asyncio.TimeoutError: continue
+                
+                scraper_logger.info(f"Worker {asyncio.current_task().get_name()}: Crawling {url}")
+                html, status, headers = await self._get_page_content(context, url, referer=last_url)
+                
+                async with self.lock:
+                    self.http_status_codes[status] = self.http_status_codes.get(status, 0) + 1
 
-                    if html:
-                        await self._parse_page(url, html, status, headers, http_session)
-                    
-                    async with self.lock:
-                        self.crawled_count += 1
-                    
-                    self.url_queue.task_done()
-                    last_url = url
-                    await asyncio.sleep(random.uniform(self.delay_min, self.delay_max))
-            finally:
-                await context.close()
+                if html:
+                    await self._parse_page(url, html, status, headers, http_session)
+                
+                async with self.lock:
+                    self.crawled_count += 1
+                
+                self.url_queue.task_done()
+                last_url = url
+                await asyncio.sleep(random.uniform(self.delay_min, self.delay_max))
+            await context.close()
     
     async def run(self):
         self.status = "Running"
         if os.path.exists(COMMAND_FILE): os.remove(COMMAND_FILE)
         
-        # Run domain-level OSINT once at the start
         await self._run_domain_osint()
+        await self._run_reconnaissance_phase()
 
         updater_task = asyncio.create_task(self._periodic_updater())
         

@@ -11,7 +11,7 @@ ajax_wait_selector =
 
 [parser]
 # Comma-separated list of CSS selectors to remove before extracting text.
-exclude_selectors = nav, footer, .sidebar, #ad-banner
+exclude_selectors = nav, footer, .sidebar
 # Set to true to extract structured data (JSON-LD, OpenGraph)
 extract_structured_data = true
 # Set to true to detect the language of the page content
@@ -29,6 +29,15 @@ wayback_discovery = true
 shodan_recon = true
 # Get a free API key from https://account.shodan.io/
 shodan_api_key = 
+
+[recon]
+# Enable active reconnaissance modules
+subdomain_enum = true
+dir_bruteforce = true
+find_cloud_buckets = true
+# Paths to wordlists
+subdomain_wordlist = wordlists/subdomains-small.txt
+dir_wordlist = wordlists/directories-small.txt
 
 [sitemap]
 # Set to true to enable sitemap.xml parsing for faster URL discovery

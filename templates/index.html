@@ -13,7 +13,8 @@
         .modal-body pre { background-color: #e9ecef; padding: 1rem; border-radius: 0.3rem; max-height: 300px; }
         .tech-category { font-weight: bold; margin-top: 0.5rem; }
         .osint-card { height: 100%; }
-        .osint-card .card-body { overflow-y: auto; max-height: 250px; }
+        .osint-card .card-body, .modal-body pre { max-height: 250px; overflow-y: auto; background-color: #f8f9fa; }
+        .recon-table { max-height: 300px; overflow-y: auto; }
     </style>
 </head>
 <body>
@@ -23,21 +24,28 @@
             <button id="stop-scraper-btn" class="btn btn-danger"><i class="bi bi-stop-circle"></i> Stop Scraper</button>
         </header>
 
-        <!-- Domain OSINT Panel -->
-        <div class="card mb-4">
-            <div class="card-header fw-bold"><i class="bi bi-globe"></i> Domain OSINT Results for <span id="osint-domain">...</span></div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="card osint-card">
-                            <div class="card-header"><i class="bi bi-diagram-3"></i> DNS Records</div>
-                            <div class="card-body" id="dns-info"><p class="text-muted p-2">Running...</p></div>
-                        </div>
+        <!-- OSINT & Recon -->
+        <div class="row mb-4">
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header fw-bold"><i class="bi bi-globe"></i> Domain OSINT</div>
+                    <div class="card-body row">
+                        <div class="col-md-6 osint-card"><div class="card-header"><i class="bi bi-diagram-3"></i> DNS</div><div class="card-body" id="dns-info"></div></div>
+                        <div class="col-md-6 osint-card"><div class="card-header"><i class="bi bi-hdd-network"></i> Shodan</div><div class="card-body" id="shodan-info"></div></div>
                     </div>
-                    <div class="col-md-6">
-                        <div class="card osint-card">
-                            <div class="card-header"><i class="bi bi-hdd-network"></i> Shodan Infrastructure</div>
-                            <div class="card-body" id="shodan-info"><p class="text-muted p-2">Running...</p></div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header fw-bold"><i class="bi bi-search"></i> Active Reconnaissance</div>
+                    <div class="card-body">
+                        <ul class="nav nav-tabs" id="reconTab" role="tablist">
+                            <li class="nav-item" role="presentation"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#subdomains-panel" type="button">Subdomains & Dirs</button></li>
+                            <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#params-panel" type="button">URL Parameters</button></li>
+                        </ul>
+                        <div class="tab-content pt-2">
+                            <div class="tab-pane fade show active recon-table" id="subdomains-panel"><table class="table table-sm"><thead><tr><th>Type</th><th>Finding</th><th>Status</th></tr></thead><tbody id="recon-tbody"></tbody></table></div>
+                            <div class="tab-pane fade recon-table" id="params-panel"><table class="table table-sm"><thead><tr><th>URL</th><th>Parameter</th></tr></thead><tbody id="params-tbody"></tbody></table></div>
                         </div>
                     </div>
                 </div>
@@ -249,6 +257,9 @@
         const dnsInfo = document.getElementById('dns-info');
         const shodanInfo = document.getElementById('shodan-info');
         const jsAnalysisInfo = document.getElementById('js-analysis-info');
+        const reconTbody = document.getElementById('recon-tbody');
+        const paramsTbody = document.getElementById('params-tbody');
+        const cloudBucketsPre = document.getElementById('cloud-buckets-pre');
 
         // State
         let currentPage = 1;
@@ -414,6 +425,10 @@
                     filesInfo.innerHTML = html || '<p class="text-muted">None found.</p>';
                 }
 
+                // Recon Panel
+                cloudBucketsPre.innerHTML = formatJsonToPre(data.cloud_buckets);
+                jsAnalysisPre.innerHTML = formatJsonToPre(data.js_analysis);
+
                 detailsModal.show();
             } catch (error) { console.error('Error fetching record details:', error); }
         }
@@ -425,6 +440,8 @@
             fetchData();
             setInterval(updateDashboard, 3000);
             fetchDomainOsint();
+            fetchReconResults();
+            fetchUrlParameters();
         });
 
         searchInput.addEventListener('input', () => {
@@ -491,15 +508,29 @@
             const data = await response.json();
             if (data.error) return;
 
-            document.getElementById('osint-domain').textContent = data.domain;
-            
             dnsInfo.innerHTML = formatJsonToPre(data.dns_records);
             shodanInfo.innerHTML = formatJsonToPre(data.shodan_info);
         }
 
-        function formatJsonToPre(data) {
+        async function fetchReconResults() {
+            const response = await fetch('/api/recon_results');
+            const data = await response.json();
+            if (data.error) return;
+
+            reconTbody.innerHTML = data.map(r => `<tr><td>${r.type}</td><td>${r.finding}</td><td>${r.status_code}</td></tr>`).join('');
+        }
+
+        async function fetchUrlParameters() {
+            const response = await fetch('/api/url_parameters');
+            const data = await response.json();
+            if (data.error) return;
+
+            paramsTbody.innerHTML = data.map(p => `<tr><td>${p.url.substring(0,50)}...</td><td>${p.parameter}</td></tr>`).join('');
+        }
+
+        function formatJsonToPre(jsonData) {
             try {
-                return `<pre>${JSON.stringify(JSON.parse(data), null, 2)}</pre>`;
+                return `<pre>${JSON.stringify(JSON.parse(jsonData), null, 2)}</pre>`;
             } catch {
                 return '<p class="text-muted">Not available or invalid JSON.</p>';
             }

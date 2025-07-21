@@ -1,0 +1,11 @@
+admin
+login
+dashboard
+api
+.git
+.env
+backup
+config
+uploads
+test
+dev
