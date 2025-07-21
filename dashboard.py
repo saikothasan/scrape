@@ -27,6 +27,40 @@ def get_db_path():
 def index():
     return render_template('index.html')
 
+@app.route('/api/osint')
+def get_osint_data():
+    """Fetches the domain-level OSINT data."""
+    db_path = get_db_path()
+    if not os.path.exists(db_path):
+        return jsonify({"error": "Database file not found."})
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            # Get the most recently updated OSINT data
+            cursor.execute("SELECT * FROM domain_osint ORDER BY last_updated DESC LIMIT 1")
+            row = cursor.fetchone()
+            return jsonify(dict(row) if row else {})
+    except sqlite3.Error as e:
+        return jsonify({"error": "Database query failed."}), 500
+
+@app.route('/api/record/<int:record_id>')
+def get_record_details(record_id):
+    db_path = get_db_path()
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT text_content, structured_data, technologies, emails, 
+                       social_links, image_metadata, interesting_files, js_analysis
+                FROM scraped_pages WHERE id = ?
+            """, (record_id,))
+            row = cursor.fetchone()
+            return jsonify(dict(row) if row else {})
+    except sqlite3.Error as e:
+        return jsonify({"error": "Database query failed."}), 500
+
 @app.route('/api/status')
 def get_status():
     if not os.path.exists(STATUS_FILE):
@@ -79,51 +113,6 @@ def get_data():
             return jsonify({"data": data, "total": total_rows, "page": page, "per_page": per_page})
     except sqlite3.Error as e:
         return jsonify({"error": "Database query failed."}), 500
-
-@app.route('/api/record/<int:record_id>')
-def get_record_details(record_id):
-    db_path = get_db_path()
-    try:
-        with sqlite3.connect(db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute("SELECT text_content, structured_data FROM scraped_pages WHERE id = ?", (record_id,))
-            row = cursor.fetchone()
-            return jsonify(dict(row) if row else {})
-    except sqlite3.Error as e:
-        return jsonify({"error": "Database query failed."}), 500
-
-@app.route('/api/control', methods=['POST'])
-def control_scraper():
-    command = request.json.get('command')
-    if command == 'stop':
-        try:
-            with open(COMMAND_FILE, 'w') as f: json.dump({'command': 'stop'}, f)
-            return jsonify({"status": "ok", "message": "Stop command issued."})
-        except IOError:
-            return jsonify({"status": "error", "message": "Could not write command file."}), 500
-    return jsonify({"status": "error", "message": "Invalid command."}), 400
-
-@app.route('/api/export', methods=['POST'])
-def export_data():
-    columns = request.json.get('columns')
-    if not columns:
-        return jsonify({"status": "error", "message": "No columns selected for export."}), 400
-    
-    if not os.path.exists(EXPORT_DIR):
-        os.makedirs(EXPORT_DIR)
-        
-    db_path = get_db_path()
-    exporter = Exporter(db_path)
-    filename = f"export_{int(time.time())}.csv"
-    output_path = os.path.join(EXPORT_DIR, filename)
-    
-    success = exporter.export_to_csv(columns, output_path)
-    
-    if success:
-        return send_file(output_path, as_attachment=True)
-    else:
-        return jsonify({"status": "error", "message": "Export failed."}), 500
 
 if __name__ == '__main__':
     if os.path.exists(COMMAND_FILE): os.remove(COMMAND_FILE)

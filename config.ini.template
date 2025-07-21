@@ -17,6 +17,19 @@ extract_structured_data = true
 # Set to true to detect the language of the page content
 detect_language = true
 
+[osint]
+# Enable/disable advanced OSINT features
+fingerprint_tech = true
+extract_contacts = true
+analyze_images = true
+find_hidden_files = true
+analyze_js = true
+dns_recon = true
+wayback_discovery = true
+shodan_recon = true
+# Get a free API key from https://account.shodan.io/
+shodan_api_key = 
+
 [sitemap]
 # Set to true to enable sitemap.xml parsing for faster URL discovery
 enabled = true

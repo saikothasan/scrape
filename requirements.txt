@@ -11,3 +11,8 @@ playwright-stealth
 extruct
 langdetect
 requests
+aiohttp
+Pillow
+Wappalyzer-python
+dnspython
+shodan

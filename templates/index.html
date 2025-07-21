@@ -10,7 +10,10 @@
         body { background-color: #f8f9fa; }
         .stat-card .display-4 { font-weight: 700; }
         .log-container { background-color: #212529; color: #e9ecef; font-family: 'Menlo', monospace; height: 400px; }
-        .modal-body pre { background-color: #e9ecef; padding: 1rem; border-radius: 0.3rem; }
+        .modal-body pre { background-color: #e9ecef; padding: 1rem; border-radius: 0.3rem; max-height: 300px; }
+        .tech-category { font-weight: bold; margin-top: 0.5rem; }
+        .osint-card { height: 100%; }
+        .osint-card .card-body { overflow-y: auto; max-height: 250px; }
     </style>
 </head>
 <body>
@@ -19,6 +22,27 @@
             <h1 class="h3"><i class="bi bi-robot"></i> Advanced Scraper Dashboard</h1>
             <button id="stop-scraper-btn" class="btn btn-danger"><i class="bi bi-stop-circle"></i> Stop Scraper</button>
         </header>
+
+        <!-- Domain OSINT Panel -->
+        <div class="card mb-4">
+            <div class="card-header fw-bold"><i class="bi bi-globe"></i> Domain OSINT Results for <span id="osint-domain">...</span></div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card osint-card">
+                            <div class="card-header"><i class="bi bi-diagram-3"></i> DNS Records</div>
+                            <div class="card-body" id="dns-info"><p class="text-muted p-2">Running...</p></div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card osint-card">
+                            <div class="card-header"><i class="bi bi-hdd-network"></i> Shodan Infrastructure</div>
+                            <div class="card-body" id="shodan-info"><p class="text-muted p-2">Running...</p></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Stats Grid -->
         <div class="row text-center mb-4">
@@ -149,17 +173,50 @@
     </div>
 
     <div class="modal fade" id="detailsModal" tabindex="-1">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">Scraped Content Details</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <a href="#" id="wayback-link" target="_blank" class="ms-auto btn btn-outline-secondary btn-sm"><i class="bi bi-archive"></i> View on Wayback Machine</a>
+                    <button type="button" class="btn-close ms-2" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <h6>Structured Data (JSON)</h6>
-                    <pre id="structured-data-pre"></pre>
-                    <h6 class="mt-3">Full Text Content</h6>
-                    <pre id="text-content-pre"></pre>
+                    <ul class="nav nav-tabs" id="detailsTab" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="osint-tab" data-bs-toggle="tab" data-bs-target="#osint-panel" type="button" role="tab">Page OSINT</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="content-tab" data-bs-toggle="tab" data-bs-target="#content-panel" type="button" role="tab">Content</button>
+                        </li>
+                    </ul>
+                    <div class="tab-content pt-3">
+                        <div class="tab-pane fade show active" id="osint-panel" role="tabpanel">
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <h6><i class="bi bi-hdd-stack"></i> Detected Technologies</h6>
+                                    <div id="tech-info"></div>
+                                    <h6 class="mt-3"><i class="bi bi-files"></i> Discovered Files</h6>
+                                    <div id="interesting-files"></div>
+                                </div>
+                                <div class="col-md-4">
+                                    <h6><i class="bi bi-people"></i> Contacts & Socials</h6>
+                                    <div id="contacts-info"></div>
+                                    <h6 class="mt-3"><i class="bi bi-filetype-js"></i> JS Analysis</h6>
+                                    <div id="js-analysis-info"></div>
+                                </div>
+                                <div class="col-md-4">
+                                    <h6><i class="bi bi-camera"></i> Image EXIF Data</h6>
+                                    <div id="exif-info"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="content-panel" role="tabpanel">
+                            <h6>Structured Data (JSON-LD, OpenGraph)</h6>
+                            <pre id="structured-data-pre"></pre>
+                            <h6 class="mt-3">Full Text Content</h6>
+                            <pre id="text-content-pre"></pre>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -189,6 +246,9 @@
         const detailsModal = new bootstrap.Modal(document.getElementById('detailsModal'));
         const structuredDataPre = document.getElementById('structured-data-pre');
         const textContentPre = document.getElementById('text-content-pre');
+        const dnsInfo = document.getElementById('dns-info');
+        const shodanInfo = document.getElementById('shodan-info');
+        const jsAnalysisInfo = document.getElementById('js-analysis-info');
 
         // State
         let currentPage = 1;
@@ -257,7 +317,7 @@
                         <td>${row.language || 'N/A'}</td>
                         <td>${new Date(row.scraped_at).toLocaleString()}</td>
                         <td>
-                            <button class="btn btn-sm btn-outline-primary view-details-btn" data-id="${row.id}">
+                            <button class="btn btn-sm btn-outline-primary view-details-btn" data-id="${row.id}" data-url="${row.url}">
                                 <i class="bi bi-file-text"></i> View
                             </button>
                         </td>
@@ -281,29 +341,90 @@
             }
         }
 
-        async function showDetails(recordId) {
+        function formatJson(preElement, jsonData) {
+            try {
+                const parsed = JSON.parse(jsonData);
+                preElement.textContent = JSON.stringify(parsed, null, 2);
+            } catch {
+                preElement.textContent = jsonData || "Not available or invalid JSON.";
+            }
+        }
+
+        function renderList(container, items, title) {
+            if (items && items.length > 0) {
+                container.innerHTML += `<strong>${title}:</strong><ul>${items.map(i => `<li>${i}</li>`).join('')}</ul>`;
+            }
+        }
+
+        async function showDetails(recordId, url) {
+            document.getElementById('wayback-link').href = `https://web.archive.org/web/*/${url}`;
             try {
                 const response = await fetch(`/api/record/${recordId}`);
                 const data = await response.json();
+
+                // Content Panel
+                formatJson(document.getElementById('structured-data-pre'), data.structured_data);
+                document.getElementById('text-content-pre').textContent = data.text_content || "Not available.";
+
+                // Page OSINT Panel
+                formatJson(document.getElementById('js-analysis-info'), data.js_analysis);
+
+                // OSINT Panel
+                const techInfo = document.getElementById('tech-info');
+                const contactsInfo = document.getElementById('contacts-info');
+                const exifInfo = document.getElementById('exif-info');
+                const filesInfo = document.getElementById('interesting-files');
                 
-                let structuredJSON = "Not available.";
-                if (data.structured_data) {
-                    try {
-                        structuredJSON = JSON.stringify(JSON.parse(data.structured_data), null, 2);
-                    } catch { structuredJSON = "Invalid JSON format."; }
+                techInfo.innerHTML = contactsInfo.innerHTML = exifInfo.innerHTML = filesInfo.innerHTML = '<p class="text-muted">None found.</p>';
+
+                if (data.technologies) {
+                    const techs = JSON.parse(data.technologies);
+                    let html = '';
+                    for (const category in techs) {
+                        html += `<div class="tech-category">${category}</div>`;
+                        html += `<ul>${techs[category].map(t => `<li>${t}</li>`).join('')}</ul>`;
+                    }
+                    techInfo.innerHTML = html || '<p class="text-muted">None found.</p>';
                 }
-                structuredDataPre.textContent = structuredJSON;
-                textContentPre.textContent = data.text_content || "Not available.";
+
+                if (data.emails || data.social_links) {
+                    contactsInfo.innerHTML = '';
+                    renderList(contactsInfo, JSON.parse(data.emails || '[]'), 'Emails');
+                    const socials = JSON.parse(data.social_links || '{}');
+                    for (const platform in socials) {
+                        renderList(contactsInfo, socials[platform], platform);
+                    }
+                }
+
+                if (data.image_metadata) {
+                    const exifData = JSON.parse(data.image_metadata);
+                    let html = '';
+                    for (const imgUrl in exifData) {
+                        html += `<strong>${imgUrl.split('/').pop()}</strong><pre>${JSON.stringify(exifData[imgUrl], null, 2)}</pre>`;
+                    }
+                    exifInfo.innerHTML = html || '<p class="text-muted">None found.</p>';
+                }
+                
+                if (data.interesting_files) {
+                    const files = JSON.parse(data.interesting_files);
+                    let html = '';
+                    for (const file in files) {
+                        html += `<p><a href="${files[file]}" target="_blank">${file}</a></p>`;
+                    }
+                    filesInfo.innerHTML = html || '<p class="text-muted">None found.</p>';
+                }
+
                 detailsModal.show();
             } catch (error) { console.error('Error fetching record details:', error); }
         }
-
+        
         // Event Listeners
         document.addEventListener('DOMContentLoaded', () => {
             setupCharts();
             updateDashboard();
             fetchData();
             setInterval(updateDashboard, 3000);
+            fetchDomainOsint();
         });
 
         searchInput.addEventListener('input', () => {
@@ -323,7 +444,7 @@
         dataBody.addEventListener('click', e => {
             const btn = e.target.closest('.view-details-btn');
             if (btn) {
-                showDetails(btn.dataset.id);
+                showDetails(btn.dataset.id, btn.dataset.url);
             }
         });
 
@@ -364,6 +485,25 @@
                 alert('Export failed. Check the dashboard logs for details.');
             }
         });
+
+        async function fetchDomainOsint() {
+            const response = await fetch('/api/osint');
+            const data = await response.json();
+            if (data.error) return;
+
+            document.getElementById('osint-domain').textContent = data.domain;
+            
+            dnsInfo.innerHTML = formatJsonToPre(data.dns_records);
+            shodanInfo.innerHTML = formatJsonToPre(data.shodan_info);
+        }
+
+        function formatJsonToPre(data) {
+            try {
+                return `<pre>${JSON.stringify(JSON.parse(data), null, 2)}</pre>`;
+            } catch {
+                return '<p class="text-muted">Not available or invalid JSON.</p>';
+            }
+        }
     </script>
 </body>
 </html>
