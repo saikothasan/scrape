@@ -62,21 +62,21 @@ The framework is divided into several key functional areas:
 **Prerequisites**: Python 3.10+
 
 1.  **Set up a Virtual Environment** (Recommended):
-    \`\`\`bash
+    ```bash
     python -m venv venv
     source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
-    \`\`\`
+    ```
 
 2.  **Install Dependencies**:
-    \`\`\`bash
+    ```bash
     pip install -r requirements.txt
-    \`\`\`
+    ```
 
 3.  **Install Playwright Browsers**:
     This is a one-time setup to download the necessary browser binaries.
-    \`\`\`bash
+    ```bash
     playwright install
-    \`\`\`
+    ```
 
 4.  **Configure the Scraper**:
     - Rename `config.ini.template` to `config.ini`.
@@ -94,7 +94,7 @@ The framework is divided into several key functional areas:
     # For websites requiring login
     SCRAPER_USERNAME="your_login_username"
     SCRAPER_PASSWORD="your_login_password"
-    \`\`\`
+    ```
 
 ---
 
@@ -104,15 +104,15 @@ The framework consists of two main components: the scraper and the dashboard. Th
 
 1.  **Run the Scraper**:
     This will start the crawling and reconnaissance process based on your `config.ini`.
-    \`\`\`bash
+    ```bash
     python scraper.py
-    \`\`\`
+    ```
 
 2.  **Run the Dashboard**:
     This will start the web server for monitoring the scraper's progress.
-    \`\`\`bash
+    ```bash
     python dashboard.py
-    \`\`\`
+    ```
     Navigate to `http://127.0.0.1:5000` in your web browser to view the dashboard.
 
 ---
@@ -145,27 +145,3 @@ The `config.ini` file is the primary control center for the scraper.
 This tool is designed for professional and educational purposes only. It is intended for use in authorized security assessments, penetration testing, and legitimate data collection scenarios.
 
 **Users are solely responsible for their actions.** Using this tool against websites without prior mutual consent is illegal in many jurisdictions. The developers assume no liability and are not responsible for any misuse or damage caused by this program. Always respect the `robots.txt` file of a website and its Terms of Service.
-
----
-
-## Project Structure
-
-\`\`\`
-.
-├── canvas_spoof.js         # Script for anti-fingerprinting
-├── captcha_solver.py       # Handles 2Captcha integration
-├── config.ini.template     # Template for configuration
-├── dashboard.py            # Flask web dashboard
-├── database.py             # SQLite database handler
-├── export.py               # CSV export utility
-├── osint_utils.py          # OSINT data gathering functions
-├── recon_tools.py          # Active reconnaissance functions
-├── README.md               # This file
-├── requirements.txt        # Python dependencies
-├── scraper.py              # The main scraper application
-├── tech_fingerprinter.py   # Wappalyzer integration
-├── templates/
-│   └── index.html          # HTML for the web dashboard
-└── wordlists/
-    ├── directories-small.txt # Wordlist for directory brute-forcing
-    └── subdomains-small.txt  # Wordlist for subdomain enumeration
