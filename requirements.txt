@@ -1,0 +1,13 @@
+playwright
+beautifulsoup4
+lxml
+fake-useragent
+tldextract
+pydantic
+python-dotenv
+Flask
+2captcha-python
+playwright-stealth
+extruct
+langdetect
+requests

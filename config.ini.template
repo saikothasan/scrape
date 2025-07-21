@@ -1,0 +1,91 @@
+[main]
+start_url = http://quotes.toscrape.com/
+database_file = scraped_data.db
+tasks = 5
+delay_min = 1.5
+delay_max = 4.0
+resume_crawl = true
+# Optional: A CSS selector to wait for on each page before parsing.
+# Useful for pages with heavy AJAX loading.
+ajax_wait_selector = 
+
+[parser]
+# Comma-separated list of CSS selectors to remove before extracting text.
+exclude_selectors = nav, footer, .sidebar, #ad-banner
+# Set to true to extract structured data (JSON-LD, OpenGraph)
+extract_structured_data = true
+# Set to true to detect the language of the page content
+detect_language = true
+
+[sitemap]
+# Set to true to enable sitemap.xml parsing for faster URL discovery
+enabled = true
+
+[crawling]
+# Regex patterns to filter URLs. One per line.
+# Whitelist is applied first if present.
+whitelist_patterns =
+    # Example: Only crawl product pages
+    # /product/\d+
+
+blacklist_patterns =
+    # Example: Avoid crawling user profile pages
+    # /user/
+    # /profile/
+
+# CSS selectors for pagination links (e.g., "Next" buttons).
+# Comma-separated.
+pagination_selectors = .next a, .pagination a[rel=next], a:has-text("Next"), a:has-text("›")
+
+[retries]
+# Settings for retrying failed page requests.
+max_retries = 3
+initial_backoff_seconds = 2.0
+
+[behavior]
+# Enable human-like mouse movements and scrolling
+human_like_mouse = true
+# Enable canvas fingerprint spoofing
+canvas_spoofing = true
+
+[fingerprint]
+# Spoof browser profile details. Match these to your proxy for best results.
+# Example: en-US, de-DE, fr-FR
+locale = en-US
+# Example: America/New_York, Europe/Berlin
+timezone_id = America/New_York
+# Example: 40.7128 (New York City)
+geolocation_lat = 
+# Example: -74.0060 (New York City)
+geolocation_lon = 
+
+[proxies]
+# Comma-separated list of proxies. 
+# Format: http://user:pass@host:port or socks5://user:pass@host:port
+proxy_list = 
+
+[headers]
+# Custom headers to send with every request.
+# Example for multi-language support:
+accept-language = en-US,en;q=0.9
+# Example for API key auth:
+authorization = 
+
+[credentials]
+# For security, prefer using a .env file or environment variables
+username =
+password =
+
+[captcha]
+# API key for your 2Captcha solving service.
+api_key =
+captcha_selector = div.g-recaptcha
+captcha_submit_selector = input[type="submit"]
+
+[login]
+login_url = http://quotes.toscrape.com/login
+username_selector = #username
+password_selector = #password
+submit_selector = input[type="submit"]
+success_selector = a[href="/logout"]
+failure_selector = .alert-danger

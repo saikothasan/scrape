@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scraper Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        body { background-color: #f8f9fa; }
+        .stat-card .display-4 { font-weight: 700; }
+        .log-container { background-color: #212529; color: #e9ecef; font-family: 'Menlo', monospace; height: 400px; }
+        .modal-body pre { background-color: #e9ecef; padding: 1rem; border-radius: 0.3rem; }
+    </style>
+</head>
+<body>
+    <div class="container-fluid p-4">
+        <header class="pb-3 mb-4 border-bottom d-flex justify-content-between align-items-center">
+            <h1 class="h3"><i class="bi bi-robot"></i> Advanced Scraper Dashboard</h1>
+            <button id="stop-scraper-btn" class="btn btn-danger"><i class="bi bi-stop-circle"></i> Stop Scraper</button>
+        </header>
+
+        <!-- Stats Grid -->
+        <div class="row text-center mb-4">
+            <div class="col">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title text-muted">Status</h5>
+                        <p id="status" class="display-6 fw-bold">--</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title text-muted">URLs Crawled</h5>
+                        <p id="crawled-count" class="display-6 fw-bold">0</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title text-muted">Queue Size</h5>
+                        <p id="queue-size" class="display-6 fw-bold">0</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title text-muted">Crawl Rate (URLs/min)</h5>
+                        <p id="crawl-rate" class="display-6 fw-bold">0.00</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title text-muted">Elapsed Time</h5>
+                        <p id="elapsed-time" class="display-6 fw-bold">00:00:00</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title text-muted">Est. Time Remaining</h5>
+                        <p id="etr" class="display-6 fw-bold">N/A</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts and Logs -->
+        <div class="row mb-4">
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header">Crawl Rate Over Time</div>
+                    <div class="card-body"><canvas id="crawlRateChart"></canvas></div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header">HTTP Status Codes</div>
+                    <div class="card-body"><canvas id="statusCodesChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mb-4">
+            <div class="card-header">Live Logs</div>
+            <div class="card-body log-container p-3 rounded-bottom" id="logs"></div>
+        </div>
+
+        <!-- Data Table -->
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                Scraped Data
+                <div>
+                    <input type="text" id="search-input" class="form-control form-control-sm d-inline-block w-auto" placeholder="Search URL or Title...">
+                    <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#exportModal"><i class="bi bi-download"></i> Export to CSV</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>URL</th><th>Title</th><th>Status</th><th>Lang</th><th>Scraped At</th><th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="data-body"></tbody>
+                    </table>
+                </div>
+                <nav>
+                    <ul class="pagination justify-content-center" id="pagination"></ul>
+                </nav>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div class="modal fade" id="exportModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Export to CSV</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Select columns to include in the export:</p>
+                    <form id="export-form">
+                        <div class="form-check"><input class="form-check-input" type="checkbox" value="url" id="col-url" checked> <label class="form-check-label" for="col-url">URL</label></div>
+                        <div class="form-check"><input class="form-check-input" type="checkbox" value="title" id="col-title" checked> <label class="form-check-label" for="col-title">Title</label></div>
+                        <div class="form-check"><input class="form-check-input" type="checkbox" value="text_content" id="col-text"> <label class="form-check-label" for="col-text">Text Content</label></div>
+                        <div class="form-check"><input class="form-check-input" type="checkbox" value="status_code" id="col-status" checked> <label class="form-check-label" for="col-status">Status Code</label></div>
+                        <div class="form-check"><input class="form-check-input" type="checkbox" value="language" id="col-lang" checked> <label class="form-check-label" for="col-lang">Language</label></div>
+                        <div class="form-check"><input class="form-check-input" type="checkbox" value="structured_data" id="col-structured"> <label class="form-check-label" for="col-structured">Structured Data (JSON)</label></div>
+                        <div class="form-check"><input class="form-check-input" type="checkbox" value="scraped_at" id="col-time" checked> <label class="form-check-label" for="col-time">Scraped At</label></div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="export-btn">Export</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="detailsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Scraped Content Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <h6>Structured Data (JSON)</h6>
+                    <pre id="structured-data-pre"></pre>
+                    <h6 class="mt-3">Full Text Content</h6>
+                    <pre id="text-content-pre"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // Chart instances
+        let crawlRateChart, statusCodesChart;
+        const crawlRateData = { labels: [], datasets: [{ label: 'URLs/min', data: [], borderColor: 'rgb(75, 192, 192)', tension: 0.1, fill: false }] };
+        const statusCodesData = { labels: [], datasets: [{ data: [], backgroundColor: ['#28a745', '#ffc107', '#dc3545', '#17a2b8', '#6c757d'] }] };
+
+        // DOM Elements
+        const statusEl = document.getElementById('status');
+        const crawledCountEl = document.getElementById('crawled-count');
+        const queueSizeEl = document.getElementById('queue-size');
+        const crawlRateEl = document.getElementById('crawl-rate');
+        const elapsedTimeEl = document.getElementById('elapsed-time');
+        const etrEl = document.getElementById('etr');
+        const logsEl = document.getElementById('logs');
+        const dataBody = document.getElementById('data-body');
+        const paginationEl = document.getElementById('pagination');
+        const searchInput = document.getElementById('search-input');
+        const stopBtn = document.getElementById('stop-scraper-btn');
+        const exportBtn = document.getElementById('export-btn');
+        const detailsModal = new bootstrap.Modal(document.getElementById('detailsModal'));
+        const structuredDataPre = document.getElementById('structured-data-pre');
+        const textContentPre = document.getElementById('text-content-pre');
+
+        // State
+        let currentPage = 1;
+        let searchDebounce;
+
+        function setupCharts() {
+            crawlRateChart = new Chart(document.getElementById('crawlRateChart'), { type: 'line', data: crawlRateData, options: { animation: false } });
+            statusCodesChart = new Chart(document.getElementById('statusCodesChart'), { type: 'pie', data: statusCodesData, options: { animation: false } });
+        }
+
+        function updateStatusBadge(status) {
+            statusEl.textContent = status;
+            statusEl.className = 'badge fs-5 ';
+            if (status === 'Running') statusEl.classList.add('bg-success');
+            else if (status === 'Finished') statusEl.classList.add('bg-primary');
+            else if (status === 'Stopped') statusEl.classList.add('bg-danger');
+            else statusEl.classList.add('bg-secondary');
+        }
+
+        async function updateDashboard() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                if (data.error) return;
+
+                updateStatusBadge(data.status);
+                crawledCountEl.textContent = data.crawled_count;
+                queueSizeEl.textContent = data.queue_size;
+                crawlRateEl.textContent = data.crawl_rate.toFixed(2);
+                elapsedTimeEl.textContent = data.elapsed_time;
+                etrEl.textContent = data.estimated_time_remaining;
+                logsEl.innerHTML = data.recent_logs.join('<br>');
+                logsEl.scrollTop = logsEl.scrollHeight;
+
+                // Update charts
+                const now = new Date().toLocaleTimeString();
+                crawlRateData.labels.push(now);
+                crawlRateData.datasets[0].data.push(data.crawl_rate);
+                if (crawlRateData.labels.length > 20) {
+                    crawlRateData.labels.shift();
+                    crawlRateData.datasets[0].data.shift();
+                }
+                crawlRateChart.update();
+
+                statusCodesData.labels = Object.keys(data.http_status_codes);
+                statusCodesData.datasets[0].data = Object.values(data.http_status_codes);
+                statusCodesChart.update();
+
+            } catch (error) { console.error('Error fetching status:', error); }
+        }
+
+        async function fetchData(page = 1, search = '') {
+            currentPage = page;
+            try {
+                const response = await fetch(`/api/data?page=${page}&search=${search}`);
+                const data = await response.json();
+                if (data.error) return;
+
+                dataBody.innerHTML = '';
+                data.data.forEach(row => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td><a href="${row.url}" target="_blank">${row.url.length > 50 ? row.url.substring(0, 50) + '...' : row.url}</a></td>
+                        <td>${row.title ? (row.title.length > 60 ? row.title.substring(0, 60) + '...' : row.title) : 'No Title'}</td>
+                        <td><span class="badge bg-${row.status_code === 200 ? 'success' : 'warning'}">${row.status_code}</span></td>
+                        <td>${row.language || 'N/A'}</td>
+                        <td>${new Date(row.scraped_at).toLocaleString()}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary view-details-btn" data-id="${row.id}">
+                                <i class="bi bi-file-text"></i> View
+                            </button>
+                        </td>
+                    `;
+                    dataBody.appendChild(tr);
+                });
+                renderPagination(data.total, data.per_page, data.page);
+            } catch (error) { console.error('Error fetching data:', error); }
+        }
+
+        function renderPagination(totalItems, perPage, currentPage) {
+            const totalPages = Math.ceil(totalItems / perPage);
+            paginationEl.innerHTML = '';
+            if (totalPages <= 1) return;
+
+            for (let i = 1; i <= totalPages; i++) {
+                const li = document.createElement('li');
+                li.className = `page-item ${i === currentPage ? 'active' : ''}`;
+                li.innerHTML = `<a class="page-link" href="#" data-page="${i}">${i}</a>`;
+                paginationEl.appendChild(li);
+            }
+        }
+
+        async function showDetails(recordId) {
+            try {
+                const response = await fetch(`/api/record/${recordId}`);
+                const data = await response.json();
+                
+                let structuredJSON = "Not available.";
+                if (data.structured_data) {
+                    try {
+                        structuredJSON = JSON.stringify(JSON.parse(data.structured_data), null, 2);
+                    } catch { structuredJSON = "Invalid JSON format."; }
+                }
+                structuredDataPre.textContent = structuredJSON;
+                textContentPre.textContent = data.text_content || "Not available.";
+                detailsModal.show();
+            } catch (error) { console.error('Error fetching record details:', error); }
+        }
+
+        // Event Listeners
+        document.addEventListener('DOMContentLoaded', () => {
+            setupCharts();
+            updateDashboard();
+            fetchData();
+            setInterval(updateDashboard, 3000);
+        });
+
+        searchInput.addEventListener('input', () => {
+            clearTimeout(searchDebounce);
+            searchDebounce = setTimeout(() => {
+                fetchData(1, searchInput.value);
+            }, 500);
+        });
+
+        paginationEl.addEventListener('click', e => {
+            if (e.target.tagName === 'A') {
+                e.preventDefault();
+                fetchData(parseInt(e.target.dataset.page), searchInput.value);
+            }
+        });
+
+        dataBody.addEventListener('click', e => {
+            const btn = e.target.closest('.view-details-btn');
+            if (btn) {
+                showDetails(btn.dataset.id);
+            }
+        });
+
+        stopBtn.addEventListener('click', async () => {
+            if (confirm('Are you sure you want to stop the scraper?')) {
+                await fetch('/api/control', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: 'stop' })
+                });
+            }
+        });
+
+        exportBtn.addEventListener('click', async () => {
+            const selectedColumns = Array.from(document.querySelectorAll('#export-form .form-check-input:checked')).map(cb => cb.value);
+            if (selectedColumns.length === 0) {
+                alert('Please select at least one column to export.');
+                return;
+            }
+            
+            const response = await fetch('/api/export', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ columns: selectedColumns })
+            });
+
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = `export_${Date.now()}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+            } else {
+                alert('Export failed. Check the dashboard logs for details.');
+            }
+        });
+    </script>
+</body>
+</html>
