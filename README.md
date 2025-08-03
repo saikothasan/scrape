@@ -4,8 +4,6 @@ This is a professional-grade, enterprise-level framework for web scraping, Open 
 
 The framework is built around a resilient, asynchronous Python core and features a real-time web dashboard for monitoring and data analysis.
 
-![Dashboard Screenshot](https://user-images.githubusercontent.com/12345/placeholder.png) <!-- Placeholder for a real screenshot -->
-
 ---
 
 ## Key Features
